@@ -9,15 +9,15 @@ import (
 // configuration captures the plugin's external configuration as exposed in the Mattermost server
 // configuration, as well as values computed from the configuration. Any public fields will be
 // deserialized from the Mattermost server configuration in OnConfigurationChange.
-//
-// As plugins are inherently concurrent (hooks being called asynchronously), and the plugin
-// configuration can change at any time, access to the configuration must be synchronized. The
-// strategy used in this plugin is to guard a pointer to the configuration, and clone the entire
-// struct whenever it changes. You may replace this with whatever strategy you choose.
-//
-// If you add non-reference types to your configuration struct, be sure to rewrite Clone as a deep
-// copy appropriate for your types.
 type configuration struct {
+	// PagerDuty API Key
+	PagerDutyAPIKey string
+
+	// Webhook Secret for verifying webhook requests from PagerDuty
+	WebhookSecret string
+
+	// Default channel to post notifications
+	DefaultChannel string
 }
 
 // Clone shallow copies the configuration. Your implementation may require a deep copy if
@@ -78,6 +78,13 @@ func (p *Plugin) OnConfigurationChange() error {
 	}
 
 	p.setConfiguration(configuration)
+
+	// Initialize or update PagerDuty client with new configuration
+	if configuration.PagerDutyAPIKey != "" {
+		if err := p.initializePagerDutyClient(); err != nil {
+			return errors.Wrap(err, "failed to initialize PagerDuty client")
+		}
+	}
 
 	return nil
 }

@@ -1,17 +1,17 @@
+// server/plugin.go
 package main
 
 import (
-	"net/http"
 	"sync"
-	"time"
 
-	"github.com/mattermost/mattermost-plugin-starter-template/server/command"
-	"github.com/mattermost/mattermost-plugin-starter-template/server/store/kvstore"
 	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/mattermost/mattermost/server/public/plugin"
 	"github.com/mattermost/mattermost/server/public/pluginapi"
-	"github.com/mattermost/mattermost/server/public/pluginapi/cluster"
 	"github.com/pkg/errors"
+
+	"github.com/mnzsyu/mattermost-pagerduty-plugin/server/client"
+	"github.com/mnzsyu/mattermost-pagerduty-plugin/server/command"
+	"github.com/mnzsyu/mattermost-pagerduty-plugin/server/store/kvstore"
 )
 
 // Plugin implements the interface expected by the Mattermost server to communicate between the server and plugin processes.
@@ -24,10 +24,14 @@ type Plugin struct {
 	// client is the Mattermost server API client.
 	client *pluginapi.Client
 
-	// commandClient is the client used to register and execute slash commands.
-	commandClient command.Command
+	// commandHandler is the handler for slash commands.
+	commandHandler command.Command
 
-	backgroundJob *cluster.Job
+	// pdClient is the PagerDuty API client.
+	pdClient *client.PagerDutyClient
+
+	// botUserID is the ID of the bot user.
+	botUserID string
 
 	// configurationLock synchronizes access to the configuration.
 	configurationLock sync.RWMutex
@@ -41,42 +45,60 @@ type Plugin struct {
 func (p *Plugin) OnActivate() error {
 	p.client = pluginapi.NewClient(p.API, p.Driver)
 
+	// Initialize KV store client
 	p.kvstore = kvstore.NewKVStore(p.client)
 
-	p.commandClient = command.NewCommandHandler(p.client)
-
-	job, err := cluster.Schedule(
-		p.API,
-		"BackgroundJob",
-		cluster.MakeWaitForRoundedInterval(1*time.Hour),
-		p.runJob,
-	)
+	// Try to ensure bot exists, but continue even if it fails
+	botUserID, err := p.ensureBotExists()
 	if err != nil {
-		return errors.Wrap(err, "failed to schedule background job")
+		p.API.LogWarn("Failed to create bot user, continuing without bot", "error", err.Error())
+		// Use a default user ID or fall back to system
+		p.botUserID = ""
+	} else {
+		p.botUserID = botUserID
 	}
 
-	p.backgroundJob = job
+	// Initialize PagerDuty client
+	if err := p.initializePagerDutyClient(); err != nil {
+		return errors.Wrap(err, "failed to initialize PagerDuty client")
+	}
+
+	// Register slash commands - still useful even without bot
+	p.commandHandler = command.NewCommandHandler(p.client, p.pdClient, p.botUserID, "com.github.mnzsyu.mattermost-pagerduty-plugin")
+	if err := p.commandHandler.Register(); err != nil {
+		return errors.Wrap(err, "failed to register commands")
+	}
 
 	return nil
+}
+
+// ensureBotExists ensures the bot account exists
+func (p *Plugin) ensureBotExists() (string, error) {
+	bot := &model.Bot{
+		Username:    "pagerduty",
+		DisplayName: "PagerDuty",
+		Description: "A bot account for PagerDuty integration",
+	}
+
+	botUserID, err := p.client.Bot.EnsureBot(bot)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to ensure bot user")
+	}
+
+	return botUserID, nil
 }
 
 // OnDeactivate is invoked when the plugin is deactivated.
 func (p *Plugin) OnDeactivate() error {
-	if p.backgroundJob != nil {
-		if err := p.backgroundJob.Close(); err != nil {
-			p.API.LogError("Failed to close background job", "err", err)
-		}
-	}
+	// Perform any cleanup here
 	return nil
 }
 
-// This will execute the commands that were registered in the NewCommandHandler function.
+// ExecuteCommand executes slash commands
 func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*model.CommandResponse, *model.AppError) {
-	response, err := p.commandClient.Handle(args)
+	response, err := p.commandHandler.Handle(args)
 	if err != nil {
-		return nil, model.NewAppError("ExecuteCommand", "plugin.command.execute_command.app_error", nil, err.Error(), http.StatusInternalServerError)
+		return nil, model.NewAppError("ExecuteCommand", "pagerduty.command.execute.app_error", nil, err.Error(), 500)
 	}
 	return response, nil
 }
-
-// See https://developers.mattermost.com/extend/plugins/server/reference/
