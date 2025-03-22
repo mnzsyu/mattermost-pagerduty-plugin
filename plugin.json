@@ -1,7 +1,7 @@
 {
     "id": "com.github.mnzsyu.mattermost-pagerduty-plugin",
     "name": "PagerDuty Plugin",
-    "description": "PagerDuty integration for Mattermost.",
+    "description": "PagerDuty integration for Mattermost with interactive updates and actions",
     "homepage_url": "https://github.com/mnzsyu/mattermost-pagerduty-plugin",
     "support_url": "https://github.com/mnzsyu/mattermost-pagerduty-plugin/issues",
     "release_notes_url": "https://github.com/mnzsyu/mattermost-pagerduty-plugin/releases/tag/v0.5.1",
@@ -19,27 +19,30 @@
         "bundle_path": "webapp/dist/main.js"
     },
     "settings_schema": {
-        "header": "Configure PagerDuty integration",
-        "footer": "For more information, visit: https://github.com/mnzsyu/mattermost-pagerduty-plugin",
+        "header": "Configure PagerDuty Integration",
+        "footer": "* To report an issue, make a suggestion, or contribute, visit the [repository](https://github.com/mnzsyu/mattermost-pagerduty-plugin).",
         "settings": [
             {
                 "key": "PagerDutyAPIKey",
                 "display_name": "PagerDuty API Key",
                 "type": "text",
-                "help_text": "API key for your PagerDuty account. Create one in PagerDuty > Configuration > API Access.",
-                "placeholder": "Enter your API key",
-                "default": ""
+                "help_text": "The API key for your PagerDuty account. Create a General Access API key in PagerDuty.",
+                "placeholder": "Enter your PagerDuty API key"
             },
             {
                 "key": "WebhookSecret",
-                "display_name": "Webhook Secret",
-                "type": "generated",
-                "help_text": "Secret for verifying incoming webhooks from PagerDuty.",
-                "regenerate_help_text": "Regenerate webhook secret."
+                "display_name": "Webhook Secret (Optional)",
+                "type": "text",
+                "help_text": "If configured in PagerDuty, enter the webhook secret for verification.",
+                "placeholder": "Enter your webhook secret"
+            },
+            {
+                "key": "DefaultChannel",
+                "display_name": "Default Channel",
+                "type": "text",
+                "help_text": "Default channel to post PagerDuty notifications (without the ~).",
+                "placeholder": "alerts"
             }
         ]
-    },
-    "props": {
-        "root_url": "/plugins/com.github.mnzsyu.mattermost-pagerduty-plugin"
     }
 }
